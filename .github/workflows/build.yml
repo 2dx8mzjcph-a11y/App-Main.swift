@@ -1,0 +1,92 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer || true
+
+      - name: Create iOS Project & Build IPA
+        run: |
+          mkdir -p BuildProject/RainPoems
+          cp تطبيق/Main.swift BuildProject/RainPoems/Main.swift || cp App/Main.swift BuildProject/RainPoems/Main.swift
+
+          cat << 'EOF' > BuildProject/RainPoems/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>مشي تحت المطر</string>
+            <key>CFBundleDisplayName</key>
+            <string>مشي تحت المطر</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.ali.rainpoems.app</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>LSRequiresIPhoneOS</key>
+            <true/>
+            <key>UILaunchScreen</key>
+            <dict/>
+          </dict>
+          </plist>
+          EOF
+
+          cat << 'EOF' > BuildProject/project.yml
+          name: RainPoems
+          options:
+            bundleIdPrefix: com.ali
+            deploymentTarget:
+              iOS: "16.0"
+          targets:
+            RainPoems:
+              type: application
+              platform: iOS
+              sources:
+                - RainPoems
+              settings:
+                base:
+                  INFOPLIST_FILE: RainPoems/Info.plist
+                  PRODUCT_BUNDLE_IDENTIFIER: com.ali.rainpoems.app
+                  CODE_SIGN_IDENTITY: ""
+                  CODE_SIGNING_REQUIRED: NO
+                  CODE_SIGNING_ALLOWED: NO
+                  SWIFT_VERSION: "5.9"
+          EOF
+
+          brew install xcodegen
+          cd BuildProject
+          xcodegen generate
+
+          xcodebuild -project RainPoems.xcodeproj \
+            -scheme RainPoems \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/RainPoems.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+          mkdir -p build/ipa/Payload
+          cp -r build/RainPoems.xcarchive/Products/Applications/RainPoems.app build/ipa/Payload/
+          cd build/ipa
+          zip -r ../../RainPoems.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RainPoems-IPA
+          path: BuildProject/RainPoems.ipa
